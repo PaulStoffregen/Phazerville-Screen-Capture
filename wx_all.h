@@ -34,3 +34,4 @@
 #include <wx/bitmap.h>
 #include <wx/mstream.h>
 #include <wx/clipbrd.h>
+#include <wx/thread.h>

@@ -1,15 +1,7 @@
 #include "gui.h"
 #include "usb.h"
-#include <thread>
-
-#if __cplusplus != 201703L
-#warn "Compiling with something other than C++17"
-#endif
 
 wxIMPLEMENT_APP(MyApp);
-
-class MyFrame *main_window=NULL;
-std::thread *usb_thread=NULL;
 
 bool MyApp::OnInit()
 {
@@ -27,11 +19,8 @@ bool MyApp::OnInit()
 	long y = config->Read("y", screen_y / 2 - h / 2);
 	srand(getpid() + time(NULL));
 	// create main window
-	main_window = new MyFrame(x, y, w, h, config);
+	MyFrame *main_window = new MyFrame(x, y, w, h, config);
 	main_window->Show(true);
-	// start the USB device detection thread
-	usb_thread = new std::thread(usb_scan_thread);
-	usb_thread->detach();
 	return true;
 }
 
@@ -84,6 +73,9 @@ MyFrame::MyFrame(long x, long y, long w, long h, wxConfig *c) :
 		ID_SCALE1 + MAX_SCALE - 1);
 	Bind(wxEVT_COMMAND_MENU_SELECTED, &MyFrame::OnColor, this, ID_COLOR1, ID_COLOR3);
 	Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
+	// start the USB device detection thread
+	USB_Device_Detect_Thread *t = new USB_Device_Detect_Thread(this);
+	t->Run();
 }
 
 // from javascript at https://eh2k.github.io/%E2%96%A1%E2%97%8F/display.html
@@ -185,11 +177,11 @@ MyFrame::~MyFrame()
 	config->Write("y", pos.y);
 	config->Write("s", scale);
 	config->Flush();
-	main_window = NULL;
 }
  
 void MyFrame::OnExit(wxCommandEvent& event)
 {
+	Unlink();  // Unbind(wxEVT_THREAD, &MyFrame::OnRawData);
 	Close(true);
 }
  

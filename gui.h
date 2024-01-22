@@ -6,13 +6,6 @@
 #define COLOR_PALE  0xB8FCFF
 #define MAX_SCALE 10
 
-// global variables
-//
-extern class MyFrame *main_window;
-#ifdef WINDOWS
-extern HINSTANCE main_hInstance;
-#endif
-
 class MyApp : public wxApp
 {
 public:

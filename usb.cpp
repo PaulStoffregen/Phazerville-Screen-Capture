@@ -1,6 +1,5 @@
 #include "gui.h"
 #include "usb.h"
-#include <thread>
 
 #ifdef LINUX
 #include <libudev.h>            // sudo apt-get install libudev-dev
@@ -11,7 +10,7 @@
 
 
 // input str expects 2048 uppercase hex characters
-void receive_data(const char *str)
+void USB_Communication_Thread::receive_data(const char *str)
 {
 	//static unsigned int counter=0;
 	//printf("receive %u\n%s\n", ++counter, str);
@@ -47,11 +46,11 @@ void receive_data(const char *str)
 #ifdef LINUX
 
 
-void usb_comm_thread(char *devpath)
+wxThread::ExitCode USB_Communication_Thread::Entry()
 {
 	int fd = open(devpath, O_RDWR);
 	free(devpath);
-	if (fd < 0) return;
+	if (fd < 0) return NULL;
 	printf("begin listening\n");
 	while (1) {
 		uint8_t wbuf[32];
@@ -105,11 +104,12 @@ void usb_comm_thread(char *devpath)
 		}
 	}
 	close(fd);
+	return NULL;
 }	
 
 
 
-void udev_add(struct udev_device *dev)
+void udev_add(struct udev_device *dev, MyFrame *window)
 {
 	struct udev_device *pdev;
 	const char *vidname, *pidname, *path;
@@ -126,12 +126,11 @@ void udev_add(struct udev_device *dev)
 	path = udev_device_get_devnode(dev);
 	if (!path) return;
 	printf("found %04x:%04x -> %s\n", vid, pid, path);
-	
-	std::thread *t = new std::thread(usb_comm_thread, strdup(path));
-	t->detach();
+	USB_Communication_Thread *t = new USB_Communication_Thread(window, strdup(path));
+	t->Run();
 }
 
-void usb_scan_thread()
+wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 {
 	struct udev *udev;
 	struct udev_monitor *mon;
@@ -141,7 +140,7 @@ void usb_scan_thread()
 	const char *path;
 
 	udev = udev_new();
-	if (!udev) return;
+	if (!udev) return NULL;
 	mon = udev_monitor_new_from_netlink(udev, "udev");
 	udev_monitor_filter_add_match_subsystem_devtype(mon, "hidraw", NULL);
 	udev_monitor_enable_receiving(mon);
@@ -152,7 +151,7 @@ void usb_scan_thread()
 	udev_list_entry_foreach(entry, devices) {
 		path = udev_list_entry_get_name(entry);
 		dev = udev_device_new_from_syspath(udev, path);
-		udev_add(dev);
+		udev_add(dev, main_window);
 		udev_device_unref(dev);
 	}
 	udev_enumerate_unref(enumerate);
@@ -175,12 +174,13 @@ void usb_scan_thread()
 				dev = udev_monitor_receive_device(mon);
 				const char *action = udev_device_get_action(dev);
 				if (action && strcmp(action, "add") == 0) {
-					udev_add(dev);
+					udev_add(dev, main_window);
 				}
 				udev_device_unref(dev);
                         }
                 }
         }
+	return NULL;
 }
 
 #endif // LINUX
