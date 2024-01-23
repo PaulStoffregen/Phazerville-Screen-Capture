@@ -35,3 +35,6 @@
 #include <wx/mstream.h>
 #include <wx/clipbrd.h>
 #include <wx/thread.h>
+#ifdef WINDOWS
+#include <process.h>
+#endif

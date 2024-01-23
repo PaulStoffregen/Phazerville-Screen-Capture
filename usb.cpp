@@ -5,7 +5,21 @@
 #include <libudev.h>            // sudo apt-get install libudev-dev
 #include <linux/hidraw.h>
 #include <poll.h>
-
+#endif
+#ifdef WINDOWS
+#include <windows.h>
+#include <winuser.h>
+extern "C" {
+#include <setupapi.h>
+#include <dbt.h>
+#include <sys/time.h>
+#include <hidsdi.h>
+#include <usbiodef.h>
+#include <cfgmgr32.h>
+#include <wctype.h>
+#include <devguid.h>
+#include <hidpi.h>
+}
 #endif
 
 
@@ -184,4 +198,265 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 }
 
 #endif // LINUX
+
+
+
+
+
+
+#ifdef WINDOWS
+
+wxThread::ExitCode USB_Communication_Thread::Entry()
+{
+	HANDLE h = CreateFile((wchar_t *)devpath, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+		OPEN_EXISTING, /*FILE_FLAG_OVERLAPPED |*/ FILE_FLAG_NO_BUFFERING, NULL);
+	free(devpath);
+	if (h == INVALID_HANDLE_VALUE) return NULL;
+	printf("begin listening\n");
+	bool ok = true;
+	while (ok) {
+		uint8_t txbuf[33];
+		memset(txbuf, 0, sizeof(txbuf));
+		txbuf[1] = 'S';
+		DWORD nbyte = 33;
+		if (!WriteFile(h, txbuf, 33, &nbyte, NULL)) {
+			printf(" write error\n");
+			break;
+		}
+		uint8_t rbuf[2560];
+		memset(rbuf, 0, sizeof(rbuf));
+		int count = 0;
+		while (count < 2049) {
+			char buf[65];
+			if (ReadFile(h, buf, 65, &nbyte, NULL) || nbyte != 65) {
+				int n=0;
+				while (n < 64 && isxdigit(buf[1 + n])) n++;
+				//printf(" read ok, nbyte = %lu, n = %d\n", nbyte, n);
+				if (n) memcpy(rbuf + count, buf + 1, n);
+				count += n;
+				if (n < 64) break;
+			} else {
+				printf(" read error\n");
+				ok = false;
+				break;
+			}
+		}
+		rbuf[count] = 0;
+		//printf("count = %d: %s\n", count, rbuf);
+		if (count == 2048) {
+			receive_data((char *)rbuf);
+		}
+	}
+	CloseHandle(h);
+	return NULL;
+}
+
+
+static MyFrame *main_window_pointer;
+
+// Windows doesn't tell us add or remove events, only that something changes,
+// so we must maintain this list of previously seen paths to detect add & remove.
+typedef struct known_device_struct {
+	bool seen;
+	wchar_t *path;
+	struct known_device_struct *prev;
+	struct known_device_struct *next;
+} known_device_t;
+
+static known_device_t *known_devices;
+
+static void mark_all_devices_unseen()
+{
+	for (known_device_t *dev=known_devices; dev; dev = dev->next) {
+		dev->seen = false;
+	}
+}
+
+static bool is_previously_unseen_device(const wchar_t *path)
+{
+	for (known_device_t *dev=known_devices; dev; dev = dev->next) {
+		if (wcscmp(path, dev->path) == 0) {
+			dev->seen = true;
+			return false;
+		}
+	}
+	known_device_t *newdev = (known_device_t *)malloc(sizeof(known_device_t));
+	wchar_t *pathcopy = wcsdup(path);
+	if (!newdev || !pathcopy) return false;
+	newdev->seen = true;
+	newdev->path = pathcopy;
+	newdev->prev = NULL;
+	newdev->next = known_devices;
+	if (known_devices) known_devices->prev = newdev;
+	known_devices = newdev;
+	return true;
+}
+
+static void unseen_devices_are_assumed_removed()
+{
+	known_device_t *dev=known_devices;
+	while (dev) {
+		if (dev->seen == false) {
+			printf(" remove : %ls\n", dev->path);
+			if (dev->prev) {
+				dev->prev->next = dev->next;
+			} else {
+				known_devices = dev->next;
+			}
+			if (dev->next) {
+				dev->next->prev = dev->prev;
+			}
+			known_device_t *next = dev->next;
+			free(dev->path);
+			free(dev);
+			dev = next;
+		} else {
+			dev = dev->next;
+		}
+	}
+}
+
+static bool check_hid_interface(const wchar_t *devpath)
+{
+	HIDD_ATTRIBUTES attrib;
+	PHIDP_PREPARSED_DATA hid_data;
+	HIDP_CAPS capabilities;
+
+	HANDLE h = CreateFile(devpath, GENERIC_READ|GENERIC_WRITE,
+		FILE_SHARE_READ|FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (h == INVALID_HANDLE_VALUE) return false;
+	do {
+		attrib.Size = sizeof(HIDD_ATTRIBUTES);
+		if (!HidD_GetAttributes(h, &attrib)) break;
+		const int vid = attrib.VendorID;
+		const int pid = attrib.ProductID;
+		if (vid != 0x16C0 || pid < 0x0476 || pid > 0x04D8) break;
+		if (!HidD_GetPreparsedData(h, &hid_data)) break;
+		bool capsok = HidP_GetCaps(hid_data, &capabilities);
+		const int usepage = capabilities.UsagePage;
+		const int use = capabilities.Usage;
+		HidD_FreePreparsedData(hid_data);
+		if (!capsok || usepage != 0xFFC9 || use != 4) break;
+		CloseHandle(h);
+		printf(" found Teensy seremu interface\n");
+		return true;
+	} while (0);
+	CloseHandle(h);
+	return false;
+}
+
+
+static void usb_scan()
+{
+	GUID guid;
+	HDEVINFO info;
+	DWORD index=0;
+	SP_DEVICE_INTERFACE_DATA iface;
+	static SP_DEVICE_INTERFACE_DETAIL_DATA *details=NULL;
+	SP_DEVINFO_DATA devinfo;
+	DWORD size;
+	BOOL ret;
+
+	HidD_GetHidGuid(&guid);
+	if (!details) {
+		details = (SP_DEVICE_INTERFACE_DETAIL_DATA *)malloc(65536);
+		if (!details) return;
+	}
+	mark_all_devices_unseen();
+	info = SetupDiGetClassDevs(&guid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+	for (index=0; info != INVALID_HANDLE_VALUE; index++) {
+		//printf("hid, index=%ld\n", index);
+		iface.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+		ret = SetupDiEnumDeviceInterfaces(info, NULL, &guid, index, &iface);
+		if (!ret) break;
+		SetupDiGetInterfaceDeviceDetail(info, &iface, NULL, 0, &size, NULL);
+		//printf("  detail size = %lu (hopefully less than 65536)\n", size);
+		if (size > 65536) continue;
+		memset(details, 0, size);
+		details->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+		memset(&devinfo, 0, sizeof(devinfo));
+		devinfo.cbSize = sizeof(devinfo);
+		ret = SetupDiGetDeviceInterfaceDetail(info, &iface, details, size, NULL, &devinfo);
+		if (!ret) continue;
+		if (is_previously_unseen_device(details->DevicePath)) {
+			printf(" add: %ls\n", details->DevicePath);
+			if (check_hid_interface(details->DevicePath)) {
+				wchar_t *path = wcsdup(details->DevicePath);
+				USB_Communication_Thread *t =
+					new USB_Communication_Thread(main_window_pointer,
+					(char *)path);
+				t->Run();
+			}
+		}
+	}
+	if (info != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(info);
+	unseen_devices_are_assumed_removed();
+}
+
+
+extern "C" LRESULT CALLBACK window_callback(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	if (uMsg == WM_DEVICECHANGE) {
+		printf("window_callback WM_DEVICECHANGE\n");
+		usb_scan();
+	}
+	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+}
+
+#include "wx/msw/private.h" // https://forums.wxwidgets.org/viewtopic.php?t=2999
+
+wxThread::ExitCode USB_Device_Detect_Thread::Entry()
+{
+	printf("USB_Device_Detect_Thread begin\n");
+	main_window_pointer = main_window;
+	usb_scan();
+	WNDCLASS window;
+	memset(&window, 0, sizeof(window));
+	window.style = CS_NOCLOSE;
+	window.lpfnWndProc = window_callback;
+	window.hInstance = GetModuleHandle(NULL);
+	window.hCursor = LoadCursor(0, IDC_ARROW);
+	window.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+	window.lpszClassName = TEXT("Teensy Port Discovery");
+	if (!RegisterClass(&window)) return NULL;
+	HWND hWnd = CreateWindow(window.lpszClassName, L"dummy window", 0,
+		50, 50, 100, 100, NULL, NULL, wxGetInstance(), NULL);
+	if (!hWnd) return NULL;
+	SetTimer(hWnd, 0, 1171, NULL);
+	while (1) {
+		WaitMessage();
+		MSG msg;
+		while (GetMessage(&msg, hWnd, 0, 0)) {
+			if (msg.message == WM_DEVICECHANGE) {
+				printf("USB_Device_Detect_Thread WM_DEVICECHANGE\n");
+				usb_scan();
+			}
+			if (msg.message == WM_TIMER) {
+				// wastes CPU time, but Windows messages sometimes
+				// get lost, so sadly this is needed in some cases
+				//printf("USB_Device_Detect_Thread WM_TIMER\n");
+				usb_scan();
+			}
+		}
+	}
+	return NULL;
+}
+
+int printf_logfile(const char *format, ...)
+{
+	va_list args;
+	static FILE *fp=NULL;
+	if (!fp) {
+		fp = fopen("/tmp/logfile.txt", "a");
+		if (!fp) return 0;
+	}
+	va_start(args, format);
+	int r = vfprintf(fp, format, args);
+	va_end(args);
+	fflush(fp);
+	return r;
+}
+
+#endif // WINDOWS
 

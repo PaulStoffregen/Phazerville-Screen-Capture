@@ -2,6 +2,16 @@
 #include "gui.h"
 
 
+#ifdef WINDOWS
+#if 1
+#define printf(...) printf_logfile(__VA_ARGS__) // send all printf to a log file
+#else
+#define printf(...) // just discard all printf
+#endif
+int printf_logfile(const char *format, ...) __attribute__((format (printf, 1, 2)));
+#endif // WINDOWS
+
+
 // wxThread instances must be created on the heap with C++ new.
 // If wxTHREAD_DETACHED is used, no other functions can be
 // called after Run() starts the thread running.

@@ -3,7 +3,7 @@
 
 #define MARGIN 3
 #define COLOR_WHITE 0xFFFFFF
-#define COLOR_PALE  0xB8FCFF
+#define COLOR_PALE  0xB8F0FF
 #define MAX_SCALE 10
 
 class MyApp : public wxApp

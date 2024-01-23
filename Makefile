@@ -1,6 +1,6 @@
-OS = LINUX
+#OS = LINUX
+OS = WINDOWS
 #OS = MACOSX
-#OS = WINDOWS
 
 ifeq ($(OS), LINUX)
 TARGET = phazerville_screencapture
@@ -18,8 +18,9 @@ CPPFLAGS = -O2 -Wall `$(WXCONFIG) --cppflags` -D$(OS)
 else ifeq ($(OS), WINDOWS)
 TARGET = phazerville_screencapture.exe
 CXX = i686-w64-mingw32-g++
-WXCONFIG = ~/wxwidgets/3.1.0.mingw.teensy/bin/wx-config
+WXCONFIG = ~/wxwidgets/3.2.4.mingw.teensy/bin/wx-config
 CPPFLAGS = -O2 -Wall `$(WXCONFIG) --cppflags` -D$(OS)
+LIBS = `$(WXCONFIG) --libs` -lhid -lsetupapi -static -static-libgcc -static-libstdc++
 
 endif
 
@@ -34,5 +35,10 @@ all: $(TARGET)
 phazerville_screencapture: $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LIBS)
 
+phazerville_screencapture.exe: $(OBJS)
+	$(CXX) $(OBJS) -o $@ $(LIBS)
+	-~/teensy/td/cp_win32.sh $@
+
+
 clean:
-	rm -f *.o phazerville_screencapture
+	rm -f *.o phazerville_screencapture phazerville_screencapture.exe

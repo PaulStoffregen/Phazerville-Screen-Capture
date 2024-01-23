@@ -141,8 +141,8 @@ void MyFrame::OnCopy(wxCommandEvent& event)
 
 void MyFrame::OnScale(wxCommandEvent& event)
 {
-	size_t newscale = event.GetId() - ID_SCALE1 + 1;
-	printf("scale event, newscale = %lu\n", newscale);
+	unsigned int newscale = event.GetId() - ID_SCALE1 + 1;
+	printf("scale event, newscale = %u\n", newscale);
 	if (newscale < 1 || newscale > MAX_SCALE) return;
 	scale = newscale;
 	memset(framebuffer, 0, sizeof(framebuffer));
