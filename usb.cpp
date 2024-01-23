@@ -21,6 +21,12 @@ extern "C" {
 #include <hidpi.h>
 }
 #endif
+#ifdef MACOS
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
+#include <IOKit/hid/IOHIDLib.h>
+#include <IOKit/hid/IOHIDDevice.h>
+#endif
 
 
 // input str expects 2048 uppercase hex characters
@@ -459,4 +465,130 @@ int printf_logfile(const char *format, ...)
 }
 
 #endif // WINDOWS
+
+
+
+
+
+
+
+
+
+
+#ifdef MACOS
+
+extern "C" void attach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDeviceRef dev);
+extern "C" void receive_callback(void *context, IOReturn r, void *dev, IOHIDReportType type,
+	uint32_t id, uint8_t *report, CFIndex len);
+
+typedef struct {
+	uint8_t rbuf[2560];
+	uint8_t hidbuf[64];
+	int count;
+	bool end;
+} rxstate_t;
+
+wxThread::ExitCode USB_Communication_Thread::Entry()
+{
+	IOHIDDeviceRef dev = (IOHIDDeviceRef)devpath;
+	if (IOHIDDeviceOpen(dev, kIOHIDOptionsTypeNone) != kIOReturnSuccess) return NULL;
+	CFRelease(dev);
+	rxstate_t state;
+	IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+	IOHIDDeviceRegisterInputReportCallback(dev, state.hidbuf, 64, receive_callback, &state);
+	printf("begin listening\n");
+
+	while (1) {
+		state.count = 0;
+		state.end = false;
+		uint8_t wbuf[32];
+		memset(wbuf, 0, sizeof(wbuf));
+		wbuf[0] = 'S';
+		int r = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, 0, wbuf, 32);
+		if (r != kIOReturnSuccess) {
+			printf(" write error\n");
+			break;
+		}
+		//printf("write ok?\n");
+		while (state.end == false) {
+			CFRunLoopRunInMode(kCFRunLoopDefaultMode, INFINITY, true);
+		}
+		state.rbuf[state.count] = 0;
+		//printf(" rx count=%u, data = %s\n", state.count, state.rbuf);
+		if (state.count == 2048) {
+			receive_data((char *)state.rbuf);
+		}
+	}
+	return NULL;
+}
+
+void receive_callback(void *context, IOReturn r, void *dev, IOHIDReportType type, uint32_t id,
+        uint8_t *report, CFIndex len)
+{
+	rxstate_t &state = *(rxstate_t *)context;
+	unsigned int n = 0;
+	while (n < len && isxdigit(state.hidbuf[n])) n++;
+	if (n != 64) state.end = true;
+	//printf("receive callback, len = %ld, n=%u\n", len, n);
+	if (n > 0 && state.count + n < sizeof(state.rbuf)) {
+		memcpy(state.rbuf + state.count, state.hidbuf, n);
+		state.count += n;
+	}
+}
+
+wxThread::ExitCode USB_Device_Detect_Thread::Entry()
+{
+	IOHIDManagerRef hid_manager;
+	CFMutableDictionaryRef dict;
+
+	printf("USB_Device_Detect_Thread begin\n");
+	hid_manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+	if (!hid_manager) return NULL;
+	dict = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	int vid = 0x16C0;
+	CFDictionarySetValue(dict, CFSTR(kIOHIDVendorIDKey),
+		CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vid));
+	int usepage = 0xFFC9;
+	CFDictionarySetValue(dict, CFSTR(kIOHIDPrimaryUsagePageKey),
+		CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usepage));
+	int usage = 4;
+	CFDictionarySetValue(dict, CFSTR(kIOHIDPrimaryUsageKey),
+		CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage));
+	if (!dict) return NULL;
+	IOHIDManagerSetDeviceMatching(hid_manager, dict);
+	CFRelease(dict);
+	IOHIDManagerScheduleWithRunLoop(hid_manager, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+	IOHIDManagerRegisterDeviceMatchingCallback(hid_manager, attach_callback, main_window);
+	if (IOHIDManagerOpen(hid_manager, kIOHIDOptionsTypeNone) != kIOReturnSuccess) return NULL;
+	printf("HID Manager started\n");
+	unsigned int loopcount=0;
+	while (1) {
+		CFRunLoopRun();
+		printf("restart runloop %u\n", ++loopcount);
+		usleep(10000);
+	}
+	return NULL;
+}
+
+void attach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDeviceRef dev)
+{
+	printf("attach_callback\n");
+	CFTypeRef type = IOHIDDeviceGetProperty(dev, CFSTR(kIOHIDProductIDKey));
+	if (!type) return;
+	if (CFGetTypeID(type) != CFNumberGetTypeID()) return;
+	int pid=0;
+	if (!CFNumberGetValue((CFNumberRef)type, kCFNumberSInt32Type, &pid)) return;
+	printf(" pid=%04X\n", pid);
+	if (pid < 0x0476 || pid > 0x04D8) return;
+	CFRetain(dev);
+	IOHIDDeviceUnscheduleFromRunLoop(dev, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+	MyFrame *window = (MyFrame *)context;
+	USB_Communication_Thread *t = new USB_Communication_Thread(window, (char *)dev);
+	t->Run();
+}
+
+
+
+#endif // MACOS
 
