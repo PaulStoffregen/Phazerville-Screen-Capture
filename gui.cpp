@@ -63,6 +63,7 @@ MyFrame::MyFrame(long x, long y, long w, long h, wxConfig *c) :
 	CreateStatusBar();
 	SetStatusText("For Science");
 	wxPanel *panel = new wxPanel(this, wxID_ANY);
+	panel->SetDoubleBuffered(true);
 	memset(framebuffer, 0, sizeof(framebuffer));
 	bitmap = new wxStaticBitmap(panel, wxID_ANY,
 		wxImage((128+MARGIN*2)*scale, (64+MARGIN*2)*scale, framebuffer, true));
