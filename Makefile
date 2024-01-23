@@ -37,8 +37,9 @@ phazerville_screencapture: $(OBJS)
 
 phazerville_screencapture.exe: $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LIBS)
+	-pjrcwinsigntool $@
 	-~/teensy/td/cp_win32.sh $@
-
 
 clean:
 	rm -f *.o phazerville_screencapture phazerville_screencapture.exe
+	rm -f phazerville_screencapture.exe.sign*
