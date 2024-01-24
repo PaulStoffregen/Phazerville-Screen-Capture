@@ -19,6 +19,7 @@ LIBS = `$(WXCONFIG) --libs` -framework IOKit -framework CoreFoundation
 else ifeq ($(OS), WINDOWS)
 TARGET = phazerville_screencapture.exe
 CXX = i686-w64-mingw32-g++
+WINDRES = i686-w64-mingw32-windres
 WXCONFIG = ~/wxwidgets/3.2.4.mingw.teensy/bin/wx-config
 CPPFLAGS = -O2 -Wall `$(WXCONFIG) --cppflags` -D$(OS)
 LIBS = `$(WXCONFIG) --libs` -lhid -lsetupapi -static -static-libgcc -static-libstdc++
@@ -34,19 +35,26 @@ all: $(TARGET)
 	$(CXX) -c $(CPPFLAGS) -o $@ $<
 
 phazerville_screencapture: $(OBJS)
-	$(CXX) $(OBJS) -o $@ $(LIBS)
+	$(CXX) -s $(OBJS) -o $@ $(LIBS)
 
-phazerville_screencapture.exe: $(OBJS)
-	$(CXX) $(OBJS) -o $@ $(LIBS)
+phazerville_screencapture.exe: resource.o $(OBJS)
+	$(CXX) -s resource.o $(OBJS) -o $@ $(LIBS)
 	-pjrcwinsigntool $@
 	-~/teensy/td/cp_win32.sh $@
 
+resource.o: icon/resource.rc icon/icon.ico
+	$(WINDRES) -o resource.o icon/resource.rc
+
 phazerville_screencapture.app: phazerville_screencapture $(OBJS) Info.plist
 	mkdir -p $@/Contents/MacOS
+	strip phazerville_screencapture
 	cp phazerville_screencapture $@/Contents/MacOS
 	mkdir -p $@/Contents/Resources/English.lproj
+	cp Info.plist $@/Contents
+	cp icon/icon.png $@/Contents/Resources
 	/bin/echo -n 'APPL????' > $@/Contents/PkgInfo
-	-scp phazerville_screencapture macair:
+	-pjrcmacsigntool $@
+	-scp -r phazerville_screencapture.app macair:
 
 clean:
 	rm -f *.o phazerville_screencapture phazerville_screencapture.exe

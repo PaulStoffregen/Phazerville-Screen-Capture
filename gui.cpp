@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "usb.h"
+#include "icon/icon.xpm"
 
 wxIMPLEMENT_APP(MyApp);
 
@@ -62,6 +63,7 @@ MyFrame::MyFrame(long x, long y, long w, long h, wxConfig *c) :
 	SetMenuBar(menuBar);
 	CreateStatusBar();
 	SetStatusText("For Science");
+	SetIcon(wxIcon(icon_xpm));
 	wxPanel *panel = new wxPanel(this, wxID_ANY);
 	panel->SetDoubleBuffered(true);
 	memset(framebuffer, 0, sizeof(framebuffer));
