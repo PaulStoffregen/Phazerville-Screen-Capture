@@ -5,11 +5,11 @@
 	<key>CFBundleDisplayName</key>
 	<string>Phazerville Screen Capture</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.pjrc.phazerville_screencapture</string>
+	<string>com.pjrc.phazervillescreencapture</string>
 	<key>CFBundleName</key>
 	<string>PhazervilleScreenCapture</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>0.2</string>
 	<key>LSHasLocalizedDisplayName</key>
 	<false/>
 	<key>NSHumanReadableCopyright</key>
@@ -25,7 +25,7 @@
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>0.1</string>
+	<string>0.2</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>10.10.0</string>
 </dict>
