@@ -29,6 +29,9 @@ extern "C" {
 #endif
 
 
+volatile bool quit_all_threads = false;
+
+
 // input str expects 2048 uppercase hex characters
 void USB_Communication_Thread::receive_data(const char *str)
 {
@@ -36,6 +39,7 @@ void USB_Communication_Thread::receive_data(const char *str)
 	//printf("receive %u\n%s\n", ++counter, str);
 	RawScreenData bin;
 
+	if (quit_all_threads) return;
 	for (int i=0; i < 1024; i++) {
 		char c = *str++;
 		if (c >= '0' && c <= '9') {
@@ -55,6 +59,7 @@ void USB_Communication_Thread::receive_data(const char *str)
 		}
 	}
 	// transmit event to GUI with 1024 bytes raw data
+	if (quit_all_threads) return;
 	wxThreadEvent *event = new wxThreadEvent(wxEVT_THREAD, ID_RAW_DATA);
 	event->SetPayload<RawScreenData>(bin);
 	wxQueueEvent(main_window, event);
@@ -119,6 +124,7 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 		}
 		rbuf[count] = 0;
 		//printf("count = %d: %s\n", count, rbuf);
+		if (quit_all_threads) break;
 		if (count == 2048) {
 			receive_data((char *)rbuf);
 		}
@@ -199,6 +205,7 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 				udev_device_unref(dev);
                         }
                 }
+		if (quit_all_threads) break;
         }
 	return NULL;
 }
@@ -249,6 +256,7 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 		}
 		rbuf[count] = 0;
 		//printf("count = %d: %s\n", count, rbuf);
+		if (quit_all_threads) break;
 		if (count == 2048) {
 			receive_data((char *)rbuf);
 		}
@@ -432,6 +440,7 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 	SetTimer(hWnd, 0, 1171, NULL);
 	while (1) {
 		WaitMessage();
+		if (quit_all_threads) break;
 		MSG msg;
 		while (GetMessage(&msg, hWnd, 0, 0)) {
 			if (msg.message == WM_DEVICECHANGE) {
@@ -515,6 +524,7 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 		}
 		state.rbuf[state.count] = 0;
 		//printf(" rx count=%u, data = %s\n", state.count, state.rbuf);
+		if (quit_all_threads) break;
 		if (state.count == 2048) {
 			receive_data((char *)state.rbuf);
 		}
@@ -525,6 +535,7 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 void receive_callback(void *context, IOReturn r, void *dev, IOHIDReportType type, uint32_t id,
         uint8_t *report, CFIndex len)
 {
+	if (quit_all_threads) return;
 	rxstate_t &state = *(rxstate_t *)context;
 	unsigned int n = 0;
 	while (n < len && isxdigit(state.hidbuf[n])) n++;
@@ -565,6 +576,7 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 	unsigned int loopcount=0;
 	while (1) {
 		CFRunLoopRun();
+		if (quit_all_threads) break;
 		printf("restart runloop %u\n", ++loopcount);
 		usleep(10000);
 	}
@@ -574,6 +586,7 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 void attach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDeviceRef dev)
 {
 	printf("attach_callback\n");
+	if (quit_all_threads) return;
 	CFTypeRef type = IOHIDDeviceGetProperty(dev, CFSTR(kIOHIDProductIDKey));
 	if (!type) return;
 	if (CFGetTypeID(type) != CFNumberGetTypeID()) return;

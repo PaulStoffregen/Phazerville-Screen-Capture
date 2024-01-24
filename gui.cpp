@@ -27,6 +27,7 @@ bool MyApp::OnInit()
 
 int MyApp::OnExit()
 {
+	quit_all_threads = true;
 	return 0;
 }
 
@@ -156,6 +157,7 @@ void MyFrame::OnColor(wxCommandEvent& event)
 
 MyFrame::~MyFrame()
 {
+	quit_all_threads = true;
 	wxSize size = GetSize();
 	config->Write("w", size.GetWidth());
 	config->Write("h", size.GetHeight());
@@ -168,7 +170,11 @@ MyFrame::~MyFrame()
  
 void MyFrame::OnExit(wxCommandEvent& event)
 {
+	quit_all_threads = true;
 	Unlink();  // Unbind(wxEVT_THREAD, &MyFrame::OnRawData);
+#ifdef MACOS
+	usleep(50000);
+#endif
 	Close(true);
 }
  

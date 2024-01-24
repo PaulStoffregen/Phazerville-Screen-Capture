@@ -11,6 +11,7 @@
 int printf_logfile(const char *format, ...) __attribute__((format (printf, 1, 2)));
 #endif // WINDOWS
 
+extern volatile bool quit_all_threads;
 
 // wxThread instances must be created on the heap with C++ new.
 // If wxTHREAD_DETACHED is used, no other functions can be
