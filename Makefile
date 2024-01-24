@@ -1,6 +1,6 @@
-#OS = LINUX
+OS = LINUX
 #OS = WINDOWS
-OS = MACOS
+#OS = MACOS
 
 ifeq ($(OS), LINUX)
 TARGET = phazerville_screencapture

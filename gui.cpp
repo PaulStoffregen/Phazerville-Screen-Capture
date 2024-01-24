@@ -113,29 +113,13 @@ void MyFrame::OnRawData(wxThreadEvent& event)
 
 void MyFrame::OnCopy(wxCommandEvent& event)
 {
-	//printf("copy to clipboard\n");
+	wxInitAllImageHandlers();
 	wxClipboard *clipboard = wxClipboard::Get();
 	if (clipboard && clipboard->Open()) {
-		clipboard->UsePrimarySelection(false);
-		clipboard->Clear();
-		//wxBitmapDataObject *data = new wxBitmapDataObject(bitmap->GetBitmap());
+		printf("Copy to clipboard\n");
 		wxBitmapDataObject *data = new wxBitmapDataObject(wxBitmap(
 			wxImage((128+MARGIN*2)*scale, (64+MARGIN*2)*scale, framebuffer, true)));
-
-		if (clipboard->IsSupported(wxDF_BITMAP)) {
-			printf(" clipboard supports wxDF_BITMAP\n");
-			if (clipboard->SetData(data)) {
-				//clipboard->Flush();
-				printf(" success\n");
-			} else {
-				printf(" copy to clipboard failed :-(\n");
-				// TODO: do we need to delete wxBitmapDataObject
-			}
-		} else {
-			printf(" clipboard does not support wxDF_BITMAP\n");
-			printf(" IsUsingPrimarySelection() = %s\n",
-				clipboard->IsUsingPrimarySelection() ? "true" : "false");
-		}
+		clipboard->SetData(data);
 		clipboard->Close();
 	}
 }
