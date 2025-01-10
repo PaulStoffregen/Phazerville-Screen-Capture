@@ -1,6 +1,6 @@
 # Phazerville Screen Capture
 
-Use with Ornament & Crime modular synth running Phazerville 1.7 or later.  Teensy 3.2, Teensy 4.0 and Teensy 4.1 based O_C are supported.
+Use with Ornament & Crime modular synth running [Phazerville](https://github.com/djphazer/O_C-Phazerville) 1.7 or later.  Teensy 3.2, Teensy 4.0 and Teensy 4.1 based O_C are supported.
 
 Just connect by USB and you will see your Ornament & Crime display shown on your computer.
 
