@@ -38,3 +38,4 @@
 #ifdef WINDOWS
 #include <process.h>
 #endif
+#include <cstdint>

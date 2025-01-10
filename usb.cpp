@@ -5,6 +5,7 @@
 #include <libudev.h>            // sudo apt-get install libudev-dev
 #include <linux/hidraw.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 #endif
 #ifdef WINDOWS
 #include <windows.h>
@@ -76,6 +77,8 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 	int fd = open(devpath, O_RDWR);
 	free(devpath);
 	if (fd < 0) return NULL;
+	uint8_t start_cmd[5] = {0, 0x8B, 0xC5, 0x1D, 0x70};
+	ioctl(fd, HIDIOCSFEATURE(5), start_cmd); // warning: chashed on Windows 10 with wxWidgets 3.2.4
 	printf("begin listening\n");
 	while (1) {
 		uint8_t wbuf[32];
@@ -222,9 +225,13 @@ wxThread::ExitCode USB_Device_Detect_Thread::Entry()
 wxThread::ExitCode USB_Communication_Thread::Entry()
 {
 	HANDLE h = CreateFile((wchar_t *)devpath, GENERIC_READ | GENERIC_WRITE, 0, NULL,
-		OPEN_EXISTING, /*FILE_FLAG_OVERLAPPED |*/ FILE_FLAG_NO_BUFFERING, NULL);
+		OPEN_EXISTING, /*FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING*/ 0, NULL);
 	free(devpath);
 	if (h == INVALID_HANDLE_VALUE) return NULL;
+	//Sleep(350);
+	//printf("send start command\n");
+	uint8_t start_cmd[5] = {0, 0x8B, 0xC5, 0x1D, 0x70};
+	HidD_SetFeature(h, start_cmd, 5);
 	printf("begin listening\n");
 	bool ok = true;
 	while (ok) {
@@ -338,7 +345,7 @@ static bool check_hid_interface(const wchar_t *devpath)
 
 	HANDLE h = CreateFile(devpath, GENERIC_READ|GENERIC_WRITE,
 		FILE_SHARE_READ|FILE_SHARE_WRITE, NULL,
-		OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		OPEN_EXISTING, /*FILE_FLAG_OVERLAPPED*/ 0, NULL);
 	if (h == INVALID_HANDLE_VALUE) return false;
 	do {
 		attrib.Size = sizeof(HIDD_ATTRIBUTES);
@@ -361,24 +368,23 @@ static bool check_hid_interface(const wchar_t *devpath)
 }
 
 
+static unsigned char details_buffer[65536];
+
 static void usb_scan()
 {
 	GUID guid;
 	HDEVINFO info;
 	DWORD index=0;
 	SP_DEVICE_INTERFACE_DATA iface;
-	static SP_DEVICE_INTERFACE_DETAIL_DATA *details=NULL;
+	SP_DEVICE_INTERFACE_DETAIL_DATA *details=(SP_DEVICE_INTERFACE_DETAIL_DATA *)details_buffer;
 	SP_DEVINFO_DATA devinfo;
 	DWORD size;
 	BOOL ret;
 
 	HidD_GetHidGuid(&guid);
-	if (!details) {
-		details = (SP_DEVICE_INTERFACE_DETAIL_DATA *)malloc(65536);
-		if (!details) return;
-	}
-	mark_all_devices_unseen();
 	info = SetupDiGetClassDevs(&guid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+	if (info == INVALID_HANDLE_VALUE) return;
+	mark_all_devices_unseen();
 	for (index=0; info != INVALID_HANDLE_VALUE; index++) {
 		//printf("hid, index=%ld\n", index);
 		iface.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
@@ -386,7 +392,7 @@ static void usb_scan()
 		if (!ret) break;
 		SetupDiGetInterfaceDeviceDetail(info, &iface, NULL, 0, &size, NULL);
 		//printf("  detail size = %lu (hopefully less than 65536)\n", size);
-		if (size > 65536) continue;
+		if (size > sizeof(details_buffer)) continue;
 		memset(details, 0, size);
 		details->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 		memset(&devinfo, 0, sizeof(devinfo));
@@ -404,7 +410,7 @@ static void usb_scan()
 			}
 		}
 	}
-	if (info != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(info);
+	SetupDiDestroyDeviceInfoList(info);
 	unseen_devices_are_assumed_removed();
 }
 
@@ -505,6 +511,8 @@ wxThread::ExitCode USB_Communication_Thread::Entry()
 	rxstate_t state;
 	IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
 	IOHIDDeviceRegisterInputReportCallback(dev, state.hidbuf, 64, receive_callback, &state);
+	uint8_t start_cmd[4] = {0x8B, 0xC5, 0x1D, 0x70};
+	IOHIDDeviceSetReport(dev, kIOHIDReportTypeFeature, 0, start_cmd, 4);
 	printf("begin listening\n");
 
 	while (1) {

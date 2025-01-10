@@ -3,7 +3,7 @@
 
 
 #ifdef WINDOWS
-#if 1
+#if 0
 #define printf(...) printf_logfile(__VA_ARGS__) // send all printf to a log file
 #else
 #define printf(...) // just discard all printf
